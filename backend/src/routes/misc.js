@@ -1,0 +1,17 @@
+const r=require('express').Router(),db=require('../db'),{auth}=require('../services/auth'),trip=require('../services/trip'),{bad}=require('../utils/http');
+r.get('/users/me',auth(),(q,s)=>s.json(q.user));
+r.patch('/users/me',auth(),(q,s)=>{const n=String(q.body?.name||'').trim();if(n.length<2)throw bad('Nama minimal 2 karakter');
+db.prepare('update users set name=?,phone=? where id=?').run(n.slice(0,80),String(q.body.phone||'').slice(0,20),q.user.id);
+s.json(db.prepare('select id,name,email,phone,role from users where id=?').get(q.user.id))});
+r.get('/tariffs',auth(),(q,s)=>s.json(trip.tariff()));
+r.patch('/tariffs',auth('admin'),(q,s)=>{const b=q.body||{},v=['base_fare','price_per_km','minimum_fare','radius_km'].map(k=>Number(b[k]));
+if(v.some(x=>!Number.isFinite(x)||x<0)||v[3]<=0)throw bad('Nilai tarif tidak valid');
+db.transaction(()=>{db.prepare('update tariffs set active=0').run();db.prepare('insert into tariffs(base_fare,price_per_km,minimum_fare,radius_km) values(?,?,?,?)').run(...v)})();s.json(trip.tariff())});
+r.get('/history',auth('customer','driver'),(q,s)=>s.json(db.prepare("select o.*,u.name driver_name,(select rating from ratings where order_id=o.id) my_rating from orders o left join drivers d on d.id=o.driver_id left join users u on u.id=d.user_id where o.status in('TRIP_COMPLETED','CANCELLED') and (o.customer_id=? or d.user_id=?) order by o.id desc limit 50").all(q.user.id,q.user.id)));
+r.get('/locations/recent',auth('customer'),(q,s)=>s.json(db.prepare('select label name,address,latitude lat,longitude lng from locations where user_id=? group by address order by max(id) desc limit 4').all(q.user.id)));
+r.post('/ratings',auth('customer'),(q,s)=>{const{order_id,rating,review}=q.body||{},n=Number(rating);if(!Number.isInteger(n)||n<1||n>5)throw bad('Rating harus 1-5');
+const o=db.prepare("select * from orders where id=? and customer_id=? and status='TRIP_COMPLETED'").get(order_id,q.user.id);if(!o)throw bad('Order tidak ditemukan',404);
+if(db.prepare('select 1 from ratings where order_id=?').get(o.id))throw bad('Order sudah diberi rating',409);
+db.prepare('insert into ratings(order_id,customer_id,driver_id,rating,review) values(?,?,?,?,?)').run(o.id,q.user.id,o.driver_id,n,String(review||'').slice(0,300));
+db.prepare('update drivers set rating=(select round(avg(rating),2) from ratings where driver_id=?) where id=?').run(o.driver_id,o.driver_id);s.status(201).json({ok:true})});
+module.exports=r;
