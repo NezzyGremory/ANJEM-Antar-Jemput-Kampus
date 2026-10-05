@@ -1,11 +1,18 @@
 const bcrypt=require('bcryptjs');const db=require('../backend/src/db');
 function seed(){
 if(db.prepare('select count(*) n from users').get().n)return false;
+// NIM dipakai sebagai "email" field — format: nim@anjem.local
 const h=bcrypt.hashSync('password123',10),u=db.prepare('insert into users(name,email,password_hash,phone,role) values(?,?,?,?,?)');
 u.run('Admin ANJEM','admin@anjem.test',bcrypt.hashSync('admin12345',10),'081200000000','admin');
-const cust=['Budi Santoso','Sari Dewi','Andi Pratama'].map((n,i)=>u.run(n,`customer${i+1}@anjem.test`,h,`08120000010${i}`,'customer').lastInsertRowid);
-const drv=[['Rahmat','Honda Beat','K 1234 AB',-7.0518,110.4392],['Joko','Yamaha NMAX','K 2345 CD',-7.0501,110.437],['Dimas','Honda Vario','K 3456 EF',-7.053,110.4405]].map(([n,b,p,la,lo],i)=>{
-const uid=u.run(n,`driver${i+1}@anjem.test`,h,`08130000010${i}`,'driver').lastInsertRowid;
+// Customer pakai NIM sebagai login identifier
+const cust=[
+  ['Budi Santoso','60124001'],
+  ['Sari Dewi','60124002'],
+  ['Andi Pratama','60124003']
+].map(([n,nim],i)=>u.run(n,`${nim}@anjem.local`,h,`08120000010${i}`,'customer').lastInsertRowid);
+// Driver pakai NIM juga
+const drv=[['Rahmat','60130001','Honda Beat','K 1234 AB',-7.0518,110.4392],['Joko','60130002','Yamaha NMAX','K 2345 CD',-7.0501,110.437],['Dimas','60130003','Honda Vario','K 3456 EF',-7.053,110.4405]].map(([n,nim,b,p,la,lo],i)=>{
+const uid=u.run(n,`${nim}@anjem.local`,h,`08130000010${i}`,'driver').lastInsertRowid;
 const did=db.prepare("insert into drivers(user_id,status,current_latitude,current_longitude) values(?,'OFFLINE',?,?)").run(uid,la,lo).lastInsertRowid;
 const vid=db.prepare('insert into vehicles(driver_id,vehicle_type,brand,plate_number) values(?,?,?,?)').run(did,'Motor',b,p).lastInsertRowid;
 db.prepare('update drivers set vehicle_id=? where id=?').run(vid,did);return did});

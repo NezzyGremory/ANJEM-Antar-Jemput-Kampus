@@ -1,8 +1,9 @@
 const r=require('express').Router(),db=require('../db'),{auth}=require('../services/auth'),trip=require('../services/trip'),{bad}=require('../utils/http');
-r.get('/users/me',auth(),(q,s)=>s.json(q.user));
+const withNim=u=>u?{...u,nim:u.email?.endsWith('@anjem.local')?u.email.split('@')[0]:null}:u;
+r.get('/users/me',auth(),(q,s)=>s.json(withNim(q.user)));
 r.patch('/users/me',auth(),(q,s)=>{const n=String(q.body?.name||'').trim();if(n.length<2)throw bad('Nama minimal 2 karakter');
 db.prepare('update users set name=?,phone=? where id=?').run(n.slice(0,80),String(q.body.phone||'').slice(0,20),q.user.id);
-s.json(db.prepare('select id,name,email,phone,role from users where id=?').get(q.user.id))});
+s.json(withNim(db.prepare('select id,name,email,phone,role from users where id=?').get(q.user.id)))});
 r.get('/tariffs',auth(),(q,s)=>s.json(trip.tariff()));
 r.patch('/tariffs',auth('admin'),(q,s)=>{const b=q.body||{},v=['base_fare','price_per_km','minimum_fare','radius_km'].map(k=>Number(b[k]));
 if(v.some(x=>!Number.isFinite(x)||x<0)||v[3]<=0)throw bad('Nilai tarif tidak valid');
